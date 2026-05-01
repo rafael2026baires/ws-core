@@ -1,0 +1,21 @@
+{
+  "name": "twybox-ws-core",
+  "version": "1.0.0",
+  "private": true,
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "luxon": "^3.4.4",
+    "mysql2": "^3.11.0",
+    "redis": "^5.12.1",
+    "ws": "^8.20.0"
+  },
+  "description": "WebSocket core for Twybox",
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

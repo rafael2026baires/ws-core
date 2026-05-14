@@ -9,6 +9,8 @@ const { handleKpiDaily } = require('./kpi_daily.js');
 const { handleKpiSummary } = require('./kpi_summary.js');
 
 const redisStore = require('./redisStore.js');
+const deviceResolver = require('./deviceResolver.js');
+const obdResolver = require('./obdResolver.js');
 
 const PORT = process.env.PORT || 3000;
 let debugSeq = 0;
@@ -91,6 +93,86 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+
+  if (req.url === '/obd' && req.method === 'POST') {
+
+    let body = '';
+
+    req.on('data', chunk => body += chunk);
+
+    req.on('end', async () => {
+      try {
+        const msg = JSON.parse(body);
+
+        const obdUuid = msg.obd_uuid ?? msg.obdUuid;
+
+        if (!obdUuid) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'missing obd_uuid' }));
+          return;
+        }
+
+        // resolver obd_uuid → tenant_id + vehicle_id
+        const resolved = await obdResolver.resolveObd(
+          redisClient,
+          obdUuid
+        );
+
+        if (!resolved) {
+          console.warn('[OBD-NOT-FOUND]', obdUuid);
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'obd device not found' }));
+          return;
+        }
+
+        const tenantId = resolved.tenant_id;
+        const vehicleId = resolved.vehicle_id;
+
+        const obdData = {
+          tenant_id: tenantId,
+          vehicle_id: vehicleId,
+          obd_uuid: obdUuid,
+
+          fuel_level: msg.fuel_level ?? null,
+          rpm: msg.rpm ?? null,
+          engine_temp: msg.engine_temp ?? null,
+          odometer: msg.odometer ?? null,
+          battery_voltage: msg.battery_voltage ?? null,
+          engine_on: msg.engine_on ?? null,
+
+          client_ts: msg.client_ts ?? null,
+          server_ts: Date.now()
+        };
+
+        const key = `obd:${tenantId}:${vehicleId}`;
+
+        await redisClient.set(
+          key,
+          JSON.stringify(obdData),
+          {
+            expiration: {
+              type: 'EX',
+              value: 480
+            }
+          }
+        );
+
+        //console.log('[OBD SET]', key, obdData);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, key }));
+
+      } catch (err) {
+        console.error('[OBD ERROR]', err.message);
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'invalid obd body' }));
+      }
+    });
+
+    return;
+  }
+
+
   if (req.url === '/viaje' && req.method === 'POST') {
 
     let body = '';
@@ -148,41 +230,44 @@ wss.on('connection', ws => {
 
     if (msg.type === 'pos') {
 
-      const tenantId = Number(msg.tenantId);  // ← SIEMPRE número
-      const deviceUuid = msg.unitId;          // string
+        const deviceUuid = msg.unitId;
 
-      const {
-        lat,
-        lng,
-        ts,
-        viaje
-      } = msg;
+        const {
+          lat,
+          lng,
+          ts,
+          viaje
+        } = msg;
 
-      console.log(`[RENDER-IN] unit=${deviceUuid} seq=${msg.seq}`);
+        //console.log(`[RENDER-IN] unit=${deviceUuid} seq=${msg.seq}`);
 
-      // Resolver device_uuid → vehicle_id con cache
-      const cacheKey = `${tenantId}|${deviceUuid}`;
-      
-      const vehicleId = msg.vehicle_id;
-      
-      if (!vehicleId) {
-        console.warn('No vehicle_id in message', deviceUuid);
-        return;
-      }
+        // resolver device_uuid → tenant_id + vehicle_id
+        const resolved = await deviceResolver.resolveDevice(
+          redisClient,
+          deviceUuid
+        );
 
-      await redisStore.updateUnitPoint(redisClient, {
-        tenantId,
-        unitId: deviceUuid,
-        vehicle_id: vehicleId,
-        lat,
-        lng,
-        server_ts: ts,
-        viaje
-      });     
-      // ---------------------------------------------------------------------------------  
-      
+        if (!resolved) {
+          console.warn('[DEVICE-NOT-FOUND]', deviceUuid);
+          return;
+        }
+
+        const tenantId = resolved.tenant_id;
+        const vehicleId = resolved.vehicle_id;
+
+        await redisStore.updateUnitPoint(redisClient, {
+          tenantId,
+          unitId: deviceUuid,
+          vehicle_id: vehicleId,
+          lat,
+          lng,
+          server_ts: ts,
+          viaje
+        });   
+      // ---------------------------------------------------------------------------------       
       if (tenantId !== ws.tenantId) return;
     }
+    
   });
 });
 

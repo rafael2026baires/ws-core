@@ -24,7 +24,7 @@ async function getUnit(redisClient, tenantId, unitId) {
 
 async function setUnit(redisClient, tenantId, unitId, data) {
   const key = buildKey(tenantId, unitId);
-
+ 
   await redisClient.set(
     key,
     JSON.stringify(data),

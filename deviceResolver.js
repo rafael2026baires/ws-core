@@ -35,7 +35,7 @@ async function resolveDevice(redisClient, deviceUuid) {
   }
 
   // 2️⃣ fallback mysql
-  //console.log('[DEVICE-LOOKUP-DB]', deviceUuid);
+  console.log('[DEVICE-LOOKUP-DB]', deviceUuid);
 
   const conn = getPool();
 

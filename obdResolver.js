@@ -35,7 +35,7 @@ async function resolveObd(redisClient, obdUuid) {
   }
 
   // 2️⃣ fallback mysql
-  // console.log('[OBD-LOOKUP-DB]', obdUuid);
+  console.log('[OBD-LOOKUP-DB]', obdUuid);
 
   const conn = getPool();
 

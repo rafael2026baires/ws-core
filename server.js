@@ -172,7 +172,6 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-
   if (req.url === '/viaje' && req.method === 'POST') {
 
     let body = '';
@@ -180,27 +179,49 @@ const server = http.createServer((req, res) => {
     req.on('end', async () => {
 
       try {
-        const { tenantId, unitId, action, viaje } = JSON.parse(body);
-        const tId = Number(tenantId);
+        const { unitId, action, viaje } = JSON.parse(body);
 
-        const key = `unit:${tId}:${unitId}`;
+        if (!unitId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'missing unitId' }));
+          return;
+        }
+
+        const resolved = await deviceResolver.resolveDevice(
+          redisClient,
+          unitId
+        );
+
+        if (!resolved) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'device not found' }));
+          return;
+        }
+
+        const tenantId = resolved.tenant_id;
+
+        const key = `unit:${tenantId}:${unitId}`;
         const data = await redisClient.get(key);
 
         if (!data) {
-          res.writeHead(404);
+          res.writeHead(404, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'unit not found' }));
           return;
         }
-        if (action === 'START') {
-          await redisStore.setViaje(redisClient, tId, unitId, viaje);
-        }
-        if (action === 'END') {
-          await redisStore.setViaje(redisClient, tId, unitId, null);
-        }
-        res.end(JSON.stringify({ ok: true }));
 
-      } catch {
-        res.writeHead(400);
+        if (action === 'START') {
+          await redisStore.setViaje(redisClient, tenantId, unitId, viaje);
+        }
+
+        if (action === 'END') {
+          await redisStore.setViaje(redisClient, tenantId, unitId, null);
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, unitId, tenantId }));
+
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'invalid body' }));
       }
     });
@@ -223,8 +244,7 @@ wss.on('connection', ws => {
     try { msg = JSON.parse(data); } catch { return; }
 
     if (msg.type === 'register') {
-      ws.tenantId = Number(msg.tenantId); // ← SIEMPRE número
-      ws.unitId   = msg.unitId;           // string (device_uuid)
+      ws.unitId = msg.unitId; // device_uuid
       return;
     }
 
@@ -265,7 +285,7 @@ wss.on('connection', ws => {
           viaje
         });   
       // ---------------------------------------------------------------------------------       
-      if (tenantId !== ws.tenantId) return;
+      //if (tenantId !== ws.tenantId) return;
     }
     
   });

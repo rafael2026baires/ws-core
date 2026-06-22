@@ -53,9 +53,7 @@ async function updateUnitPoint(redisClient, {
   if (typeof server_ts !== 'number') return;
 
   const now = Date.now();
-
-  if (server_ts > now + 5000) return;
-  if (server_ts < now - 600000) return;
+  server_ts = now;
 
   if (prev && typeof prev.server_ts === 'number') {
     if (server_ts <= prev.server_ts) return;

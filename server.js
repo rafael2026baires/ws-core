@@ -10,7 +10,8 @@ const { handleKpiSummary } = require('./kpi_summary.js');
 
 const redisStore = require('./redisStore.js');
 const deviceResolver = require('./deviceResolver.js');
-const obdResolver = require('./obdResolver.js');
+// TELEMETRÍA / OBD OCULTA TEMPORALMENTE - V1 COMERCIAL
+// const obdResolver = require('./obdResolver.js');
 
 const PORT = process.env.PORT || 3000;
 let debugSeq = 0;
@@ -93,7 +94,8 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-
+  // TELEMETRÍA / OBD OCULTA TEMPORALMENTE - V1 COMERCIAL
+  /*
   if (req.url === '/obd' && req.method === 'POST') {
 
     let body = '';
@@ -171,6 +173,7 @@ const server = http.createServer((req, res) => {
 
     return;
   }
+  */
 
   if (req.url === '/viaje' && req.method === 'POST') {
 

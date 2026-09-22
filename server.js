@@ -10,6 +10,8 @@ const { handleKpiSummary } = require('./kpi_summary.js');
 
 const redisStore = require('./redisStore.js');
 const deviceResolver = require('./deviceResolver.js');
+const twyvoxIdentityAdapter = require('./twyvoxIdentityAdapter.js');
+const { handleIdentityInternalRequest } = require('./internalIdentityApi.js');
 // TELEMETRÍA / OBD OCULTA TEMPORALMENTE - V1 COMERCIAL
 // const obdResolver = require('./obdResolver.js');
 
@@ -49,8 +51,16 @@ async function scanKeys(pattern) {
 // -------------------------------------------------
 
 /* ================== HTTP ================== */
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
+
+  if (await handleIdentityInternalRequest(req, res, {
+    redisClient,
+    identityAdapter: twyvoxIdentityAdapter,
+    internalApiToken: process.env.INTERNAL_API_TOKEN
+  })) {
+    return;
+  }
 
   if (req.url === '/health') {
     res.end(JSON.stringify({ ok: true, ts: Date.now() }));
@@ -265,15 +275,27 @@ wss.on('connection', ws => {
         //console.log(`[RENDER-IN] unit=${deviceUuid} seq=${msg.seq}`);
 
         // resolver device_uuid → tenant_id + vehicle_id
-        const resolved = await deviceResolver.resolveDevice(
+        const identityResult = await twyvoxIdentityAdapter.resolveAuthorizedTwyVoxIdentity(
           redisClient,
           deviceUuid
         );
+
+        if (identityResult.status === 'revoked') {
+          if (ws.lastRevokedIdentity !== deviceUuid) {
+            console.warn('[POSITION-REJECTED-IDENTITY-REVOKED]', deviceUuid);
+            ws.lastRevokedIdentity = deviceUuid;
+          }
+          return;
+        }
+
+        const resolved = identityResult.identity;
 
         if (!resolved) {
           console.warn('[DEVICE-NOT-FOUND]', deviceUuid);
           return;
         }
+
+        ws.lastRevokedIdentity = null;
 
         const tenantId = resolved.tenant_id;
         const vehicleId = resolved.vehicle_id;

@@ -72,7 +72,9 @@ async function handleIdentityInternalRequest(req, res, {
     ? 'revoke'
     : req.url === '/identities/clear-revocation'
       ? 'clear'
-      : null;
+      : req.url === '/identities/invalidate-mapping'
+        ? 'invalidate-mapping'
+        : null;
 
   if (!operation) return false;
 
@@ -104,9 +106,12 @@ async function handleIdentityInternalRequest(req, res, {
     if (operation === 'revoke') {
       await identityAdapter.revokeIdentity(redisClient, identity);
       console.log('[IDENTITY-REVOKED]', identity);
-    } else {
+    } else if (operation === 'clear') {
       await identityAdapter.clearRevocation(redisClient, identity);
       console.log('[IDENTITY-REVOCATION-CLEARED]', identity);
+    } else {
+      await identityAdapter.invalidateIdentityMapping(redisClient, identity);
+      console.log('[IDENTITY-MAPPING-INVALIDATED]', identity);
     }
 
     sendJson(res, 200, { ok: true, identity });

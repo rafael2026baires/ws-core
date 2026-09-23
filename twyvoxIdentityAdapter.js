@@ -35,9 +35,14 @@ async function clearRevocation(redisClient, identity) {
   await redisClient.del(buildRevocationKey(identity));
 }
 
+async function invalidateIdentityMapping(redisClient, identity) {
+  await redisClient.del(`device:${identity}:map`);
+}
+
 module.exports = {
   resolveTwyVoxIdentity,
   resolveAuthorizedTwyVoxIdentity,
   revokeIdentity,
-  clearRevocation
+  clearRevocation,
+  invalidateIdentityMapping
 };

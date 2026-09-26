@@ -1,12 +1,6 @@
 'use strict';
 
-const MOVE_THRESHOLD_M = 3;
-
-function distanceMeters(p1, p2) {
-  const dx = (p2.lng - p1.lng) * 111320;
-  const dy = (p2.lat - p1.lat) * 110540;
-  return Math.sqrt(dx * dx + dy * dy);
-}
+const { evaluatePositionTransition } = require('./positionTransition.js');
 
 function buildKey(tenantId, unitId) {
   return `unit:${tenantId}:${unitId}`;
@@ -49,36 +43,35 @@ async function updateUnitPoint(redisClient, {
 
   const prev = await getUnit(redisClient, tenantId, unitId);
 
-  // 🔒 Validación timestamp
-  if (typeof server_ts !== 'number') return;
+  const transition = evaluatePositionTransition(
+    prev ? {
+      lat: prev.lat,
+      lng: prev.lng,
+      serverTs: prev.server_ts
+    } : null,
+    {
+      lat,
+      lng,
+      serverTs: server_ts
+    }
+  );
 
-  const now = Date.now();
-  server_ts = now;
-
-  if (prev && typeof prev.server_ts === 'number') {
-    if (server_ts <= prev.server_ts) return;
+  if (!transition.accepted) {
+    if (transition.reason === 'unrealistic_speed') {
+      console.warn('[DROP] velocidad irreal', {
+        unitId,
+        speed: transition.speed
+      });
+    }
+    return;
   }
+
+  server_ts = transition.serverTs;
 
   let stopped_since = prev?.stopped_since ?? null;
 
   if (prev) {
-    const dt = (server_ts - prev.server_ts) / 1000;
-
-    const dist = distanceMeters(
-      { lat: prev.lat, lng: prev.lng },
-      { lat, lng }
-    );
-
-    // 🔒 velocidad irreal
-    if (dt > 0) {
-      const speed = dist / dt;
-      if (speed > 60) {
-        console.warn('[DROP] velocidad irreal', { unitId, speed });
-        return;
-      }
-    }
-
-    if (dist > MOVE_THRESHOLD_M) {
+    if (transition.moved) {
       stopped_since = null;
     } else {
       if (prev?.stopped_since == null) {
